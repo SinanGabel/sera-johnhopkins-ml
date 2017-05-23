@@ -214,25 +214,28 @@ library(caret)
 library(doMC)
 registerDoMC(cores = 3)</code></pre>
 <p>K-fold cross validation is used with k=5, and a data size split ratio between the five (5) training and validation sets is set at 80/20, respectively.</p>
-<p>Note: After running the train() function from caret it turned out that bootstrapping was used even though trainControl(method=“repeatedcv”, number=10, repeats = 10) or trainControl(method=“cv”, number=10) was set i.e. caret ignored the trainControl() setting, therefore the K-fold CV is done manually outside caret as follows.</p>
+<p>After running the train() function from caret it turned out that bootstrapping was used even though trainControl(method=“repeatedcv”, number=10, repeats = 10) or trainControl(method=“cv”, number=10) was set i.e. caret ignored the trainControl() setting, therefore the K-fold CV is done manually outside caret as follows.</p>
 <pre class="r"><code>folds &lt;- createFolds(training$classe, k = 5)</code></pre>
-<p>Thus there are five pairs of training and validation sets i.e. the first training set is available as training[-folds$Fold1,] and the corresponding validation set is training[folds$Fold1,] and so on.</p>
+<p>Thus there are five pairs of training and validation sets i.e. the first training set is available as</p>
+<pre class="r"><code>training[-folds$Fold1,]</code></pre>
+<p>and the corresponding first validation set is available as.</p>
+<pre class="r"><code>training[folds$Fold1,]</code></pre>
 </div>
 <div id="model" class="section level2">
 <h2>4. MODEL</h2>
 <p>Prior to choosing the training model method a subset of a single user’s training data (user: carlitos) was used to make numerous small test cases. This was chosen to reduce computation time and to indicate which kind of model would be suitable for solving the overall problem. It was at the outset presumed that it could be a non-linear task and that decision trees could be a good starting point. Naive bayes and support vector machine models were also tried but they performed worse in calculation time and/or accuracy than the random forest method.</p>
-<p>The random forest method was further tested on the small carlitos training data to look into different parameter settings in order to tune the train() calculation according to accuracy and computation speed. Setting the number of variables randomly sampled, tuneGrid = data.frame(mtry = 20), reduces calculation time accordingly and it was found that mtry=20 was a good choice. Using preProcess = c(“scale”,“center”) did not make much difference and is not surprising as it is a decision tree. It was clear that sample size was important and sample sizes of 300, 1000, 2000, 4000, 10000 were also tested in addition to the final training size of 80 percent of the full data set of 19622 observations.</p>
-<p>So for training the following was run on all five (K-fold) training sets, and the computing time was 30 minutes for each (on Intel i5 CPU):</p>
+<p>The random forest method was further tested on the small carlitos training data to look into different parameter settings in order to tune the train() calculation according to accuracy and computation speed. Setting the number of variables randomly sampled, tuneGrid = data.frame(mtry = 20), reduces calculation time accordingly and it was found that mtry=20 was a good choice. Using preProcess = c(“scale”,“center”) did not make much difference and is not surprising as it is a tree model. It was clear that sample size was important and sample sizes of 300, 1000, 2000, 4000, 10000 were also tested in addition to the final training size of 80 percent of the full data set of 19622 observations.</p>
+<p>So for training the following was run on all five (K-fold) training sets, and the computing times were 30 minutes for each (on Intel i5 CPU):</p>
 <pre class="r"><code>tf1 &lt;- train(classe ~ ., data = training[-folds$Fold1,], method = &quot;rf&quot;, tuneGrid = data.frame(mtry = 20))</code></pre>
-<p>These models were trained and saved to computer harddisk as for later retrieval:</p>
-<p>saveRDS(tf1, “~/Dropbox/sera/PracticalML/project/tf1.rds”)</p>
-<p>Thus we can read in the trained models as:</p>
+<p>These models were trained and saved to computer harddisk for later retrieval as</p>
+<pre class="r"><code>saveRDS(tf1, &quot;~/Dropbox/sera/PracticalML/project/tf1.rds&quot;)</code></pre>
+<p>Thus we can read the trained models as:</p>
 <pre class="r"><code>tf1 &lt;- readRDS(&quot;~/Dropbox/sera/PracticalML/project/tf1.rds&quot;)
 tf2 &lt;- readRDS(&quot;~/Dropbox/sera/PracticalML/project/tf2.rds&quot;)
 tf3 &lt;- readRDS(&quot;~/Dropbox/sera/PracticalML/project/tf3.rds&quot;)
 tf4 &lt;- readRDS(&quot;~/Dropbox/sera/PracticalML/project/tf4.rds&quot;)
 tf5 &lt;- readRDS(&quot;~/Dropbox/sera/PracticalML/project/tf5.rds&quot;)</code></pre>
-<p>It turns out that the rf model performs (“in sample”) nearly identical on the five (K-fold) training sets.</p>
+<p>It turns out that the rf model performs (“in sample”) nearly identically on the five (K-fold) training sets.</p>
 <pre class="r"><code>resamps &lt;- resamples(list(train1 = tf1, train2 = tf2, train3 = tf3, train4 = tf4, train5 = tf5))
 summary(resamps)</code></pre>
 <pre><code>## 
@@ -257,11 +260,12 @@ summary(resamps)</code></pre>
 ## train3 0.9943130 0.9951675 0.9960016 0.9961746 0.9971347 0.9982325    0
 ## train4 0.9934369 0.9951913 0.9962603 0.9959032 0.9966516 0.9984685    0
 ## train5 0.9943546 0.9958652 0.9969025 0.9968158 0.9978104 0.9986803    0</code></pre>
-<p>However the real tests are how well the trained models perform on the five validation sets and the (single) testing set. Here it also turns that they all give near identical results with very low bias (i.e. precise results) and low variance (i.e. low variance between different validation sets).</p>
-<p>Prediction and accuracy calculation on a validation set is done as, and the accuracy of the first is 0.9997452, and the other trained models give near identical results:</p>
+<p>However the real tests are how well the trained models perform on the five validation sets and the (single) testing set. Here it also turns out that they all give near identical results with very low bias (i.e. precise results) and low variance (i.e. low variance between different validation sets).</p>
+<p>Prediction and accuracy calculations on a validation set is done as.</p>
 <pre class="r"><code>pred_val1 &lt;- predict(tf1, training[folds$Fold1,])
 sum(diag(table(pred_val1, training[folds$Fold1,]$classe)))/sum(table(pred_val1, training[folds$Fold1,]$classe))</code></pre>
-<p>Prediction on the testing set is done on of the five trained models (they all give the same results) as:</p>
+<p>The accuracy of the prediction on the first validation set is 0.9997452, and the other trained models (tf2 to tf5) give near identical results:</p>
+<p>Prediction on the testing set is done on one of the five trained models (they turn out to all give the same result) as:</p>
 <pre class="r"><code>predict(tf1, testing)</code></pre>
 <p>The expected out of sample error is calculated as 1 - accuracy on the validation set prediction accuracies and is thus around 0.000254842 (= 1 - 0.9997452) or 0.025 percent. Thus the goal is achieved of wanting to predict the manner in which the six persons did the exercises.</p>
 </div>
