@@ -1,6 +1,6 @@
 ---
-title: "Practical Machine Learning mini project"
-author: "Sinan Gabel"
+title: "Practical Machine Learning (mini) project"
+author: "Sinan Gabel, Copenhagen"
 date: "May 22, 2017"
 output: html_document
 ---
@@ -9,22 +9,150 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## R Markdown
+## 1. INTRODUCTION AND OBJECTIVE
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+This is a (mini) project report for peer review for the Coursera course offered by John Hopkins University and titled "Practical Machine Learning".
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+Six persons have each done a weight lifting exercise, and they have been asked to perform the weight lifting exercise in a correct manner, as well as in four non-correct ways (all well-specified to them). There are available data observations from the exercises which have been collected from sensors placed on the six persons while performing said exercises. The idea behind this weight lifting research is to study the qualitative side of doing human activity/exercise, and recognizing these activities through wearable sensors.
 
-```{r cars}
-summary(cars)
+The goal of this project is to predict the manner in which the six persons did the exercises. It is a supervised classification (learning) task because the outcomes in the training data are provided as variable (column) "classe": A correctly performed exercise is labelled "A" in the data, and the wrongly performed exercises are labelled B, C, D or E according to the actual exercise performed. 
+
+
+
+## 2. DATA COLLECTION
+
+This reads in (from computer harddisk) the 19622 observations from the raw training data, and the testing data with 20 observations. The testing data does not include the outcome column i.e. how the exercise was performed according the A-to-E labels. 
+
+```{r message = FALSE}
+library(lubridate) 
+
+training = read.csv("~/Dropbox/sera/PracticalML/project/pml-training.csv")
+testing = read.csv("~/Dropbox/sera/PracticalML/project/pml-testing.csv")
 ```
 
-## Including Plots
 
-You can also embed plots, for example:
+## 3. DATA PRE-PROCESSING, FEATURE EXTRACTION and SELECTION 
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+Looking at the raw training reveals that there are 160 columns and some columns with sparse data that are descriptive statistics data e.g. on skewness and kurtosis. Given that the actual data from which these statistics are generated are available in other data columns it is decided not to retain them in the data (unless it later turns out that more features are required for sufficient prediction accuracy).
+
+Some other columns are also removed that consist of simple data table row numbers among other, these are the "X", "new", "num" and "cvt" columns. This reduces the number of columns in the data sets to 56 columns in each (i.e. down from 160 columns). A small window of the data is presented below, and it can be seen that all data is numerical except the classe and username variables (features).
+
+```{r}
+excl_vars <- substr(names(training),0,3) %in% c("X","kur","ske","min","max","amp","var","avg","std","new","num","cvt")
+
+training = data.frame(training[!excl_vars])
+testing = data.frame(testing[!excl_vars])
+
+str(training)
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+It could be considered to reduce the number of features further by using e.g. Principal Components Analysis but if the training can be done without straining computer CPU and memory then it is better to continue without a further reduction: that can be done later if deemed necessary.
+
+Prior to taking the samples, the training set is re-sampled (re-ordered) once on the complete data set to help ensure that a model is not trained on data with spurious relationships between data: that can also lead to overfitting.  
+
+The caret package is used for this assignment and parallel processing is enabled with 3 cores (on my laptop computer) but could also have been run on a multi-core cloud instance for faster computation, however that turned out not to be necessary.
+
+```{r message = FALSE}
+training = training[sample(nrow(training)),]
+
+library(caret)
+library(doMC)
+registerDoMC(cores = 3)
+```
+
+K-fold cross validation is used with k=5, and a data size split ratio between the five (5) training and validation sets is set at 80/20, respectively. 
+
+Note: After running the train() function from caret it turned out that bootstrapping was used even though trainControl(method="repeatedcv", number=10, repeats = 10) or trainControl(method="cv", number=10) was set i.e. caret ignored the trainControl() setting, therefore the K-fold CV is done manually outside caret as follows.
+
+```{r}
+folds <- createFolds(training$classe, k = 5)
+```
+
+Thus there are five pairs of training and validation sets i.e. the first training set is available as training[-folds$Fold1,] and the corresponding validation set is  training[folds$Fold1,] and so on.
+
+
+## 4. MODEL
+
+Prior to choosing the training model method a subset of a single user's training data (user: carlitos) was used to make numerous small test cases. This was chosen to reduce computation time and to indicate which kind of model would be suitable for solving the overall problem. It was at the outset presumed that it could be a non-linear task and that decision trees could be a good starting point. Naive bayes and support vector machine models were also tried but they performed worse in calculation time and/or accuracy than the random forest method.
+
+The random forest method was further tested on the small carlitos training data to look into different parameter settings in order to tune the train() calculation according to accuracy and computation speed. Setting the number of variables randomly sampled, tuneGrid = data.frame(mtry = 20), reduces calculation time accordingly and it was found that mtry=20 was a good choice. Using preProcess = c("scale","center") did not make much difference and is not surprising as it is a decision tree. It was clear that sample size was important and sample sizes of 300, 1000, 2000, 4000, 10000 were also tested in addition to the final training size of 80 percent of the full data set of 19622 observations.
+ 
+So for training the following was run on all five (K-fold) training sets, and the computing time was 30 minutes for each (on Intel i5 CPU):
+
+```{r eval = FALSE}
+tf1 <- train(classe ~ ., data = training[-folds$Fold1,], method = "rf", tuneGrid = data.frame(mtry = 20))
+```
+
+These models were trained and saved to computer harddisk as for later retrieval:
+
+saveRDS(tf1, "~/Dropbox/sera/PracticalML/project/tf1.rds")
+
+Thus we can read in the trained models as:
+
+```{r}
+tf1 <- readRDS("~/Dropbox/sera/PracticalML/project/tf1.rds")
+tf2 <- readRDS("~/Dropbox/sera/PracticalML/project/tf2.rds")
+tf3 <- readRDS("~/Dropbox/sera/PracticalML/project/tf3.rds")
+tf4 <- readRDS("~/Dropbox/sera/PracticalML/project/tf4.rds")
+tf5 <- readRDS("~/Dropbox/sera/PracticalML/project/tf5.rds")
+
+```
+
+It turns out that the rf model performs ("in sample") nearly identical on the five (K-fold) training sets.
+
+```{r}
+resamps <- resamples(list(train1 = tf1, train2 = tf2, train3 = tf3, train4 = tf4, train5 = tf5))
+summary(resamps)
+```
+
+However the real tests are how well the trained models perform on the five validation sets and the (single) testing set. Here it also turns that they all give near identical results with very low bias (i.e. precise results) and low variance (i.e. low variance between different validation sets).
+
+Prediction and accuracy calculation on a validation set is done as, and the accuracy of the first is 0.9997452, and the other trained models give near identical results:
+
+```{r eval = FALSE}
+pred_val1 <- predict(tf1, training[folds$Fold1,])
+sum(diag(table(pred_val1, training[folds$Fold1,]$classe)))/sum(table(pred_val1, training[folds$Fold1,]$classe))
+```
+
+Prediction on the testing set is done on of the five trained models (they all give the same results) as: 
+
+```{r eval = FALSE}
+predict(tf1, testing)
+```
+
+The expected out of sample error is calculated as 1 - accuracy on the validation set prediction accuracies and is thus around 0.000254842 (= 1 - 0.9997452) or 0.025 percent. Thus the goal is achieved of wanting to predict the manner in which the six persons did the exercises. 
+
+
+
+## Sources:
+
+Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H.
+Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of
+4th International Conference in Cooperation with SIGCHI (Augmented Human '13).
+Stuttgart, Germany: ACM SIGCHI, 2013
+
+Ugulino, W.; Cardador, D.; Vega, K.; Velloso, E.; Milidiu, R.; Fuks, H.
+Wearable Computing: Accelerometers' Data Classification of Body Postures and
+Movements. Proceedings of 21st Brazilian Symposium on Artificial Intelligence.
+Advances in Artificial Intelligence - SBIA 2012. In: Lecture Notes in Computer
+Science. , pp. 52-61. Curitiba, PR: Springer Berlin / Heidelberg, 2012. ISBN
+978-3-642-34458-9. DOI: 10.1007/978-3-642-34459-6_6.
+
+http://groupware.les.inf.puc-rio.br/har
+
+http://topepo.github.io/caret/
+
+http://www.statmethods.net/management/subset.html
+
+https://stats.stackexchange.com/questions/61090/how-to-split-a-data-set-to-do-10-fold-cross-validation
+
+https://github.com/lgreski/datasciencectacontent/blob/master/markdown/pml-ghPagesSetup.md
+
+
+## Copyright
+
+Copyright 2017 Sinan Gabel, Copenhagen.
+
+
+
+
